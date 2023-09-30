@@ -4,10 +4,15 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -25,6 +30,14 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
     private lateinit var mMap: GoogleMap
     //Obtiene la informacion de la ubicacion
     private lateinit var localizacion: FusedLocationProviderClient
+    //
+    private lateinit var locationCallback: LocationCallback
+    private lateinit var locationRequest: LocationRequest
+    //
+    private var updateCount = 0
+
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,38 +111,41 @@ class MainActivity : AppCompatActivity(), OnMapReadyCallback {
 
     //
     private fun ObtenerUbicacion() {
-        //Se inicia la corrutina
-        CoroutineScope(Dispatchers.Main).launch {
-            //Permite saber al programa cuantas veces se repetira
-            var contador = 0
-            //se repite hasta que llegue a 15 veces, ya que cada bucle finaliza depsues de 20 seg (20 * 15 = 300seg) que son 5 minutos
-            while (contador < 15) {
-                // Vuelve a checar los permisos ya que android lo pide asi
-                if (ActivityCompat.checkSelfPermission(
-                        this@MainActivity,
-                        Manifest.permission.ACCESS_FINE_LOCATION
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
-                    //Se obtiene la ultima ubicacion del usuario
-                    localizacion.lastLocation.addOnSuccessListener { location: Location ->
-                        //Guarda la ubicacion
+        locationRequest = LocationRequest.create().apply {
+            interval = 20000  // Establece la tasa de actualización en 20 segundos.
+            fastestInterval = 10000  // Establece la tasa más rápida a 10 segundos si otros aplicativos solicitan actualizaciones más rápido.
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(p0: LocationResult) {
+                p0?.let {
+                    for (location in it.locations) {
                         val ubicacionExacta = LatLng(location.latitude, location.longitude)
-                        //Agrega un marker en el mapa
                         mMap.addMarker(
                             MarkerOptions().position(ubicacionExacta).title("Mi ubicación")
                         )
-                        //Se mueve la camara a esa ubicacion
                         mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(ubicacionExacta, 15f))
+
+                        updateCount++
+                        if (updateCount >= 15) {
+                            localizacion.removeLocationUpdates(this)
+                            // Aquí puedes añadir cualquier acción adicional que quieras realizar.
+                        }
                     }
-                    //Tiene un delay de 20 segundos para repetir
-                    delay(20000)
-                    contador++
-                } else {
-                    // Rompe el loop si no se dan los permisos
-                    break
                 }
             }
         }
+
+        if (ActivityCompat.checkSelfPermission(
+                this@MainActivity,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            localizacion.requestLocationUpdates(locationRequest, locationCallback, null)
+        }
     }
+
+
 
 }
